@@ -47,6 +47,20 @@
     cursor: pointer;
     font-family: inherit;
   }
+  .daypick { display: flex; gap: 8px; margin-bottom: 18px; opacity: 0; animation: rise .5s ease forwards; animation-delay: .09s; }
+  .daypick button {
+    flex: 1;
+    padding: 11px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .daypick button.sel { background: var(--accent-soft); border-color: var(--accent); color: #a3606b; font-weight: 600; }
   .card {
     background: var(--card);
     border: 1px solid var(--line);
@@ -135,6 +149,10 @@
 <div id="main">
   <h1 id="greet">Как прошёл день?</h1>
   <div class="sub" id="dateline"></div>
+  <div class="daypick" id="daypick">
+    <button id="btnToday" onclick="pickDay(0)">Сегодня</button>
+    <button id="btnYest"  onclick="pickDay(1)">Вчера</button>
+  </div>
   <button class="switch" id="modeBtn" onclick="toggleMode()">Итоги месяца →</button>
   <div id="form"></div>
   <button class="submit" id="send" onclick="submitForm()">Сохранить день</button>
@@ -186,6 +204,11 @@ const DRILLS = [
 
 const TEXTS = [];
 
+/* Вопрос-дата «За какой день эта запись?» — позволяет заполнить пропущенный день.
+   Отправляется ВСЕГДА, тремя полями _year / _month / _day.                        */
+const ENTRY_DATE = 1484912917;
+const CUTOFF_HOUR = 4;   /* до 4 утра запись относится к прошедшему дню — как в таблице */
+
 /* ЗАМЕНИТЬ 3: вопросы месячного разбора.
    Появляются по кнопке «Итоги месяца» и пишутся в ту же таблицу.   */
 const MONTHLY = [
@@ -211,6 +234,30 @@ const months = ["января","февраля","марта","апреля","м�
 const monthsNom = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 const now = new Date();
 
+/* «Логическое сегодня» с учётом отсечки в 4 утра */
+const effToday = new Date(Date.now() - CUTOFF_HOUR * 3600 * 1000);
+effToday.setHours(0, 0, 0, 0);
+const yestDay = new Date(effToday);
+yestDay.setDate(yestDay.getDate() - 1);
+let targetDate = new Date(effToday);
+let dayOffset = 0;
+
+function pickDay(off) {
+  dayOffset = off;
+  targetDate = new Date(off === 0 ? effToday : yestDay);
+  haptic();
+  paintDayPick();
+}
+
+function paintDayPick() {
+  const bT = document.getElementById("btnToday");
+  const bY = document.getElementById("btnYest");
+  bT.textContent = "Сегодня · " + effToday.getDate() + " " + months[effToday.getMonth()];
+  bY.textContent = "Вчера · " + yestDay.getDate() + " " + months[yestDay.getMonth()];
+  bT.classList.toggle("sel", dayOffset === 0);
+  bY.classList.toggle("sel", dayOffset === 1);
+}
+
 let mode = "day";
 const root = document.getElementById("form");
 const modeBtn = document.getElementById("modeBtn");
@@ -227,8 +274,9 @@ function render() {
   cardIndex = 0;
   if (mode === "day") {
     document.getElementById("greet").textContent = "Как прошёл день?";
-    document.getElementById("dateline").textContent =
-      "Сегодня " + now.getDate() + " " + months[now.getMonth()] + ", пара минут — и готово";
+    document.getElementById("dateline").textContent = "Пара минут — и готово";
+    document.getElementById("daypick").style.display = "flex";
+    paintDayPick();
     modeBtn.textContent = "Итоги месяца →";
     document.getElementById("send").textContent = "Сохранить день";
     buildDay();
@@ -236,6 +284,7 @@ function render() {
     document.getElementById("greet").textContent = "Итоги месяца";
     document.getElementById("dateline").textContent =
       monthsNom[now.getMonth()] + " " + now.getFullYear() + " — не спеши, это надолго останется";
+    document.getElementById("daypick").style.display = "none";
     modeBtn.textContent = "← Вернуться к дню";
     document.getElementById("send").textContent = "Сохранить месяц";
     buildMonth();
@@ -489,8 +538,18 @@ function submitForm() {
   });
   TEXTS.forEach(t => { if (answers.texts[t.id]) fields.push(["entry." + t.id, answers.texts[t.id]]); });
 
+  /* дата записи — отправляется всегда, даже за сегодня */
+  fields.push(["entry." + ENTRY_DATE + "_year",  targetDate.getFullYear()]);
+  fields.push(["entry." + ENTRY_DATE + "_month", targetDate.getMonth() + 1]);
+  fields.push(["entry." + ENTRY_DATE + "_day",   targetDate.getDate()]);
+
   post(fields);
-  finish("🌸", "День записан", "Спасибо. Увидимся завтра.");
+  if (dayOffset === 0) {
+    finish("🌸", "День записан", "Спасибо. Увидимся завтра.");
+  } else {
+    finish("🌸", "Записано за " + targetDate.getDate() + " " + months[targetDate.getMonth()],
+           "Запись легла на нужный день.");
+  }
 }
 
 render();
