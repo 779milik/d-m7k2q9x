@@ -61,6 +61,11 @@
     animation: rise .5s ease forwards;
     animation-delay: .1s;
   }
+  .banner.warn {
+    background: #fdf2ea;
+    border-color: #dda06d;
+    color: #9a5b2a;
+  }
   .daypick { display: flex; gap: 8px; margin-bottom: 18px; opacity: 0; animation: rise .5s ease forwards; animation-delay: .09s; }
   .daypick button {
     flex: 1;
@@ -168,6 +173,7 @@
     <button id="btnYest"  onclick="pickDay(1)">Вчера</button>
   </div>
   <div class="banner" id="mbanner" onclick="toggleMode()">Месяц заканчивается — самое время подвести итог →</div>
+  <div class="banner warn" id="dwarn" onclick="toggleMode()">День ещё не сохранён — вернись и нажми «Сохранить день»</div>
   <button class="switch" id="modeBtn" onclick="toggleMode()">Итоги месяца →</button>
   <div id="form"></div>
   <button class="submit" id="send" onclick="submitForm()">Сохранить день</button>
@@ -178,6 +184,7 @@
   <div class="big">🌸</div>
   <h2>Записано</h2>
   <p>Спасибо. Увидимся завтра.</p>
+  <button class="switch" id="backDay" style="display:none;margin-top:22px" onclick="вернутьсяКДню()">← Заполнить день</button>
 </div>
 
 <script>
@@ -278,6 +285,18 @@ function paintDayPick() {
   bY.classList.toggle("sel", dayOffset === 1);
 }
 
+let daySaved = false;
+
+/* есть ли начатая, но не отправленная дневная запись */
+function дневнойЧерновик() {
+  const шкалы = SCALES.some(s => answers.scales[s.id] !== undefined);
+  const галочки = DRILLS.some(c => (answers.checks[c.id] && answers.checks[c.id].size > 0)
+                                || (answers.others[c.id] || "").length > 0);
+  const тексты = DRILLS.some(c => c.withText && (answers.texts[c.withText.id] || "").trim().length > 0)
+              || TEXTS.some(t => (answers.texts[t.id] || "").trim().length > 0);
+  return шкалы || галочки || тексты;
+}
+
 let mode = "day";
 const root = document.getElementById("form");
 const modeBtn = document.getElementById("modeBtn");
@@ -301,6 +320,7 @@ function render() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     document.getElementById("mbanner").style.display =
       (MONTHLY.length && now.getDate() >= lastDay - 1) ? "block" : "none";
+    document.getElementById("dwarn").style.display = "none";
     modeBtn.textContent = "Итоги месяца →";
     document.getElementById("send").textContent = "Сохранить день";
     buildDay();
@@ -310,6 +330,8 @@ function render() {
       monthsNom[now.getMonth()] + " " + now.getFullYear() + " — не спеши, это надолго останется";
     document.getElementById("daypick").style.display = "none";
     document.getElementById("mbanner").style.display = "none";
+    document.getElementById("dwarn").style.display =
+      (!daySaved && дневнойЧерновик()) ? "block" : "none";
     modeBtn.textContent = "← Вернуться к дню";
     document.getElementById("send").textContent = "Сохранить месяц";
     buildMonth();
@@ -499,6 +521,17 @@ function buildMonth() {
   });
 }
 
+function вернутьсяКДню() {
+  document.getElementById("done").style.display = "none";
+  document.getElementById("backDay").style.display = "none";
+  document.getElementById("main").style.display = "block";
+  document.getElementById("send").disabled = false;
+  document.getElementById("err").style.display = "none";
+  mode = "day";
+  render();
+  window.scrollTo(0, 0);
+}
+
 function post(fields) {
   const f = document.createElement("form");
   f.action = FORM_URL;
@@ -526,8 +559,10 @@ function finish(emoji, title, text) {
     d.querySelector("h2").textContent = title;
     d.querySelector("p").textContent = text;
     d.style.display = "block";
+    const предложитьДень = (mode === "month") && !daySaved;
+    document.getElementById("backDay").style.display = предложитьДень ? "inline-block" : "none";
     if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-    if (tg) setTimeout(() => tg.close(), 2500);
+    if (tg && !предложитьДень) setTimeout(() => tg.close(), 2500);
   }, 1200);
 }
 
@@ -594,6 +629,7 @@ function submitForm() {
   fields.push(["entry." + ENTRY_DATE + "_day",   targetDate.getDate()]);
 
   post(fields);
+  daySaved = true;
   if (dayOffset === 0) {
     finish("🌸", "День записан", "Спасибо. Увидимся завтра.");
   } else {
